@@ -28,7 +28,7 @@ data class Status(
     val busy: Boolean = false,
     /** A scanned QR code refused for a name taken by an agent this phone may be reconnected to. */
     val reconnect: Reconnect? = null,
-    /** A QR code scanned, waiting for the agent's name (2026-11-22: scan first, name after). */
+    /** A QR code scanned, waiting for the agent's name: scan first, name after. */
     val scanned: Scanned? = null,
 )
 
@@ -91,7 +91,7 @@ class Agent(
     }
 
     /** Reads a scanned QR code (its text): the server it names (or, naming none, this phone's)
-     *  and the account that showed it, asked of that server (2026-11-22: the person confirms
+     *  and the account that showed it, asked of that server (for the person to confirm
      *  it is theirs), wait with it for the agent's name — see [pairScanned]. Nothing is paired
      *  yet. Returns an English error, or null. */
     suspend fun scan(text: String?): String? {

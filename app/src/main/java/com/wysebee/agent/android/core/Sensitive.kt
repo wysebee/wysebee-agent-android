@@ -1,7 +1,7 @@
 package com.wysebee.agent.android.core
 
 /**
- * Apps the agent never takes a picture of (the owner's call, 2026-11-17): banking, payment,
+ * Apps the agent never takes a picture of: banking, payment,
  * investing and crypto apps, and password managers and authenticators. Their screens show
  * balances, card numbers, one-time codes and passwords, and a screenshot passes through Wysebee
  * Cloud to the agent's AI. Android has no "banking" category, so an app is one of these by its

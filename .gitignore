@@ -12,5 +12,5 @@ captures/
 *.jks
 *.keystore
 
-# Release APKs (scripts/build.sh prod), uploaded, never committed.
+# Release APKs are never committed.
 dist/

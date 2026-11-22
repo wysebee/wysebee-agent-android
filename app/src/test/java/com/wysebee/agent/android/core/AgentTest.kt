@@ -45,7 +45,7 @@ class FakeCloud : Dispatcher() {
     /** Names taken, and whether the agent of each may be reconnected. */
     val taken = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     /** Whose offer it is; null: a cloud older than the preview, which does not know the call. */
-    @Volatile var owner: Account? = Account("Jeff", "jeff@example.com")
+    @Volatile var owner: Account? = Account("Ada", "ada@example.com")
     val previews = CopyOnWriteArrayList<JSONObject>()
 
     override fun dispatch(request: RecordedRequest): MockResponse {
@@ -66,7 +66,7 @@ class FakeCloud : Dispatcher() {
                 if (body.getString("offer") != OFFER) return json(404, JSONObject().put("detail", "That QR code is not one Wysebee is waiting for.").put("code", "offer_unknown"))
                 if (taken.containsKey(body.getString("name")) && !(body.optBoolean("reconnect") && taken[body.getString("name")] == true)) {
                     return json(409, JSONObject().put("detail", "There is already an agent with that name.").put("code", "name_taken")
-                        .put("agent", JSONObject().put("name", "jeff-android").put("label", body.getString("name"))).put("reconnect", taken[body.getString("name")]))
+                        .put("agent", JSONObject().put("name", "ada-android").put("label", body.getString("name"))).put("reconnect", taken[body.getString("name")]))
                 }
                 secretHash = body.getString("secret_hash")
                 claimed = true
@@ -199,7 +199,7 @@ class AgentTest {
         val other = make(at = "http://127.0.0.1:1").also { it.start() }
         assertNull(other.scan(qrFrom(cloud.url + "/")))
         // Whose QR code it is, asked of the cloud that showed it, for the person to confirm.
-        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url + "/"), cloud.url, Account("Jeff", "jeff@example.com")), other.status.value.scanned)
+        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url + "/"), cloud.url, Account("Ada", "ada@example.com")), other.status.value.scanned)
         assertEquals(FakeCloud.OFFER, cloud.previews.single().getString("offer"))
         // Nothing is paired until a name is typed.
         assertTrue(cloud.starts.isEmpty())
@@ -270,10 +270,10 @@ class AgentTest {
         // The scan waits for another name: no second scan needed.
         assertNotNull(agent.status.value.scanned)
         // Taken by one with no phone: offered, and done with the same QR code.
-        cloud.taken["Jeff Android"] = true
-        val said = agent.pairScanned("Jeff Android")!!
-        assertTrue(said, said.startsWith("Jeff Android (@jeff-android) already has that name, and has no phone now."))
-        assertEquals(Reconnect("Jeff Android", PairingQr(FakeCloud.OFFER, cloud.url), "jeff-android", "Jeff Android", cloud.url), agent.status.value.reconnect)
+        cloud.taken["Ada Android"] = true
+        val said = agent.pairScanned("Ada Android")!!
+        assertTrue(said, said.startsWith("Ada Android (@ada-android) already has that name, and has no phone now."))
+        assertEquals(Reconnect("Ada Android", PairingQr(FakeCloud.OFFER, cloud.url), "ada-android", "Ada Android", cloud.url), agent.status.value.reconnect)
         assertNull(agent.state.link)
         assertNull(agent.reconnect())
         assertTrue(cloud.starts.last().getBoolean("reconnect"))
@@ -282,13 +282,13 @@ class AgentTest {
     }
 
     @Test fun anOfferToReconnectCanBeDeclined() = runBlocking {
-        cloud.taken["Jeff Android"] = true
-        scanAndPair(agent, "Jeff Android", qrFrom(null))
+        cloud.taken["Ada Android"] = true
+        scanAndPair(agent, "Ada Android", qrFrom(null))
         assertNotNull(agent.status.value.reconnect)
         agent.declineReconnect()
         assertNull(agent.status.value.reconnect)
         assertNull(agent.status.value.message)
-        agent.pairScanned("Jeff Android")
+        agent.pairScanned("Ada Android")
         agent.dismissMessage()
         assertNull(agent.status.value.reconnect)
         // A code pairing never offers it.

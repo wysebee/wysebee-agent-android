@@ -63,10 +63,10 @@ it shows, or type its address under **Server**:
 | Version | App name | Package |
 |---|---|---|
 | `dev` (debug) | Wysebee Agent Dev | `com.wysebee.agent.android.dev` |
-| `prod` (release) | Wysebee Agent | `com.wysebee.agent.android` |
+| `release` | Wysebee Agent | `com.wysebee.agent.android` |
 
 ```bash
-scripts/build.sh dev             # or prod (without the release key, a prod build comes out unsigned)
+scripts/build.sh dev             # or release
 scripts/install.sh dev           # installs the build already made, and opens it
 ./gradlew testDebugUnitTest      # the core against a fake phone and a fake cloud on 127.0.0.1
 ```
@@ -77,7 +77,7 @@ scripts/install.sh dev           # installs the build already made, and opens it
 ### Trying it on the emulator
 
 ```bash
-emulator -avd wysebee35 -no-snapshot-save &
+emulator -avd <your-avd> -no-snapshot-save &
 scripts/build.sh dev && scripts/install.sh dev
 adb shell settings put secure enabled_accessibility_services \
   com.wysebee.agent.android.dev/com.wysebee.agent.android.device.AgentAccessibilityService
@@ -89,28 +89,17 @@ app's button.)
 Avoid `uiautomator dump` while it runs: UiAutomator turns other accessibility services off while
 it works, so the app reads as off until the system binds it again.
 
-## Releasing
+## Releases
 
-The production version is downloaded from the Wysebee website (an APK on Azure Blob storage,
-linked from wysebee-landing), not from Google Play.
+Wysebee Agent for Android is downloaded from [wysebee.com](https://www.wysebee.com/agents/android)
+as a signed APK, not from Google Play. People install it by allowing their browser to install
+unknown apps; Google Play Protect may ask them to confirm an app it has not seen. Scanning needs
+Google Play services, which fetches its QR code scanner the first time the app opens.
 
-```bash
-scripts/build.sh prod     # dist/wysebee-agent-android-v<version>.apk and its .sha256
-```
-
-- **The version** is `appVersion` and `appVersionCode` in `app/build.gradle.kts`. Raise both for
-  every release: a phone updates only to a higher `versionCode`.
-- **The release key** is `~/.android/wysebee-agent-android-release.jks`, its password in
-  `~/.gradle/gradle.properties` (`WYSEBEE_AGENT_ANDROID_STORE_FILE`, `_STORE_PASSWORD`,
-  `_KEY_ALIAS`), never in the repo. **Every update must be signed with this same key**, or phones
-  refuse to install it over the old one: keep both backed up. Its certificate's SHA-256 is
-  `37:DE:D5:14:1F:FA:32:E0:18:B2:25:83:CC:02:F8:82:AC:75:3C:44:F2:34:13:B6:60:8E:C1:B7:7D:E7:F9:0D`.
-  `build.sh prod` refuses to finish without it, and checks the signature.
-- **The cloud** it pairs with, `https://app.wysebee.com`, must have the Android agent type and QR
-  pairing deployed.
-- People install it by allowing their browser to install unknown apps; Google Play Protect may
-  ask them to confirm an app it has not seen. Scanning needs Google Play services, which fetches
-  its QR code scanner the first time the app opens.
+`scripts/build.sh release` makes a release build, signed only when the signing properties
+(`WYSEBEE_AGENT_ANDROID_STORE_FILE`, `_STORE_PASSWORD`, `_KEY_ALIAS`) are given as Gradle
+properties; without them it comes out unsigned. The version is `appVersion` and
+`appVersionCode` in `app/build.gradle.kts`.
 
 ## License
 

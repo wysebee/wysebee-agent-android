@@ -38,7 +38,7 @@ class StateTest {
         assertTrue(!s.copy(allowed = listOf(AllowedApp("own", "Me"))).mayOperate("own", "own"))
         assertTrue(s.mayOperate(SYSTEM_UI, "own"))
         assertTrue(!s.copy(systemUi = false).mayOperate(SYSTEM_UI, "own"))
-        // A file from before 2026-11-17 that had "every app" on: only its list counts now.
+        // A file from an early build that had "every app" on: only its list counts now.
         file.writeText("""{"allow_all": true, "allowed": [{"package": "com.example", "label": "Example"}]}""")
         assertEquals(State(allowed = listOf(AllowedApp("com.example", "Example"))), StateStore(file).load())
         file.writeText("{broken")

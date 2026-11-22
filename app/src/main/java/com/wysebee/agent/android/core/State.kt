@@ -23,9 +23,9 @@ data class State(
     val paused: Boolean = false,
     val allowed: List<AllowedApp> = emptyList(),
     /** The phone's System UI — the notification shade and quick settings — besides the apps
-     *  (2026-11-17, the owner's call: a switch of its own, off until the person turns it on). */
+     *  (a switch of its own, off until the person turns it on). */
     val systemUi: Boolean = false,
-    /** The server the person chose to pair with (2026-11-22), or null for this build's default.
+    /** The server the person chose to pair with, or null for this build's default.
      *  A link and a pending pairing keep their own. */
     val server: String? = null,
 ) {
@@ -62,7 +62,7 @@ data class State(
                 paused = o.optBoolean("paused", false),
                 systemUi = o.optBoolean("system_ui", false),
                 server = CloudAddress.normalize(o.optString("server").ifEmpty { null }),
-                // `allow_all` (an "Every app" switch until 2026-11-17) is no more: only apps listed.
+                // `allow_all` (an "Every app" switch in early builds) is no more: only apps listed.
                 allowed = (0 until a.length()).mapNotNull { i ->
                     a.optJSONObject(i)?.let { e -> e.optString("package").takeIf(String::isNotEmpty)?.let { AllowedApp(it, e.optString("label").ifEmpty { it }) } }
                 }.distinctBy { it.pkg },

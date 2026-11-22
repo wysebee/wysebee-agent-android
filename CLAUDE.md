@@ -8,11 +8,12 @@ sibling of `wysebee-agent-osx` (read its CLAUDE.md: the same rules apply where t
 
 ## What binds
 
+- **This repository is public.** Never write internal design documents, private paths, other
+  repositories' internals, dev, staging or tunnel addresses, release keys or release steps into it.
 - **The link protocol is the contract** with Wysebee Cloud and Wysebee Assistant. A change to it
-  is a change in all of them; raise it with the owner. This repository is public: never write
-  internal design documents, paths or other repositories' internals into it.
-- **Never widen what the agent can do without the owner's say**: the person allows apps here,
-  one by one (never "every app": the owner removed it, 2026-11-17), never the cloud; never this
+  is a change in all of them: ask the maintainers first.
+- **Never widen what the agent can do without the maintainers' say**: the person allows apps
+  here, one by one (never "every app"), never the cloud; never this
   app itself; never a password field; never a picture of a banking, payment, investing or
   password app (`core/Sensitive.kt`); System UI only with its own switch (`State.systemUi`);
   nothing while the phone is locked (`Device.locked`); refused while paused; no op the
@@ -23,15 +24,14 @@ sibling of `wysebee-agent-osx` (read its CLAUDE.md: the same rules apply where t
 - **Tests inject everything**: the phone (`Device`, `UiNode`: `FakeDevice`, `FakeNode`), the
   secret store (`MemorySecrets`), the cloud (`FakeCloud`, MockWebServer on 127.0.0.1), the
   state file (a temporary folder). No test reaches the internet or a real phone.
-- **The server** (2026-11-22, the owner's call, replacing a server fixed per build): every
-  build starts on `https://app.wysebee.com` (`DEFAULT_CLOUD_URL`); the person may type another
+- **The server**: every build starts on `https://app.wysebee.com` (`DEFAULT_CLOUD_URL`); the person may type another
   under Server before pairing (`Agent.setServer`, `State.server`), and a scanned QR code pairs
   with the cloud it names (`Agent.scan`, then `pairScanned` with the name), shown first, with a
   warning when it is not Wysebee's own, beside the account that showed it (`LinkClient.previewOffer`,
-  the cloud's `POST /offers/preview`: name and email, for the person to confirm it is theirs). https only (`CloudAddress`). A link and a pending pairing
-  keep their own server. **Never write a dev, staging or tunnel address into the repo** (it is
-  public).
-- **Do not bump the version unless asked.** It lives in `app/build.gradle.kts` only.
+  the cloud's `POST /offers/preview`: name and email, for the person to confirm it is theirs).
+  https only (`CloudAddress`). A link and a pending pairing keep their own server.
+- **Do not bump the version unless asked.** It lives in `app/build.gradle.kts` only; releases
+  are made outside this repository.
 
 ## Layout
 
@@ -57,7 +57,7 @@ app/src/main/java/com/wysebee/agent/android/
   AgentApp.kt    holds the Agent and runs its loop while the process lives
   ui/MainActivity.kt  the window (Compose): service state, pairing, pause, apps (a picker with a
                  checkbox each), the cloud it uses
-scripts/         build.sh [dev|prod], install.sh [dev] (installs a build already made)
+scripts/         build.sh [dev|release], install.sh [dev] (installs a build already made)
 app/src/test/    FakeDevice / FakeNode (Fakes.kt), FakeCloud (AgentTest.kt), Ops, Snapshot, State tests
 ```
 

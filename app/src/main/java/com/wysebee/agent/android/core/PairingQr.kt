@@ -5,7 +5,7 @@ import java.net.URLDecoder
 /**
  * A pairing QR code Wysebee shows (the link protocol, "Pairing by a QR code"):
  * `wysebee-agent:pair?offer=<token>&from=<the cloud that showed it>`. The phone pairs with that
- * cloud (2026-11-22, the owner's call), after showing the person which it is; one naming no
+ * cloud, after showing the person which it is; one naming no
  * cloud pairs with the phone's own server.
  */
 data class PairingQr(val offer: String, val from: String?) {

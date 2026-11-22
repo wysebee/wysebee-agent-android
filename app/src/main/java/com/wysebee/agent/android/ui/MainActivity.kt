@@ -195,7 +195,7 @@ private fun Scanned(agent: Agent, scanned: Scanned, busy: Boolean, reconnect: Re
     var name by remember { mutableStateOf("") }
     Section("Pair with ${CloudAddress.host(scanned.cloud)}") {
         Text("Server: ${scanned.cloud}", fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-        // Whose QR code it is (2026-11-22), for the person to check it is their own account.
+        // Whose QR code it is, for the person to check it is their own account.
         val account = scanned.account
         Column(
             Modifier.fillMaxWidth().background(Color(0xFF2A2338), RoundedCornerShape(8.dp)).padding(12.dp),

@@ -92,7 +92,7 @@ class OpsTest {
     @Test fun appsListsOnlyAllowed() = runTest {
         policy = policy.copy(allowed = setOf("com.example", "com.gone"))
         val out = ok("android_apps")
-        // There is no "every app" any more (2026-11-17): only the list.
+        // There is no "every app": only the list.
         assertTrue(!out.has("all_apps"))
         // By name; one the phone cannot name is listed by its package.
         val apps = out.getJSONArray("apps")

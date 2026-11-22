@@ -37,7 +37,7 @@ class LinkClient(private val http: OkHttpClient) {
      *  was paired with at once (and no code). */
     data class Started(val id: String, val code: String, val expiresIn: Int, val agent: Pair<String, String>? = null)
 
-    /** Whose QR code [offer] is, before pairing with it (2026-11-22): looking takes nothing.
+    /** Whose QR code [offer] is, before pairing with it: looking takes nothing.
      *  Null when the cloud is older than this call; refused `offer_unknown` when it is no offer. */
     suspend fun previewOffer(cloud: String, offer: String): Account? {
         val o = try {

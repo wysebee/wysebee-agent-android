@@ -4,7 +4,7 @@ import java.net.URI
 
 /**
  * A Wysebee Cloud's address as this app keeps it: `https://host[:port]`, nothing after it. The
- * person may type one (the server this phone pairs with, 2026-11-22), and a pairing QR code names
+ * person may type one (the server this phone pairs with), and a pairing QR code names
  * the one that showed it. Only https: plain http is taken only for this computer itself (the
  * tests' fake cloud), and the app's network security config refuses cleartext anyway.
  */
