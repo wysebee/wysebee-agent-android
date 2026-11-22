@@ -19,9 +19,14 @@ class PairingQrTest {
         }
     }
 
-    @Test fun hosts() {
-        assertEquals("tunnel.example.com", PairingQr.host("https://Tunnel.Example.com/"))
-        assertNull(PairingQr.host(null))
-        assertNull(PairingQr.host("not a url"))
+    @Test fun cloudAddresses() {
+        assertEquals("https://tunnel.example.com", CloudAddress.normalize(" https://Tunnel.Example.com/ "))
+        assertEquals("https://app.wysebee.com", CloudAddress.normalize("app.wysebee.com"))
+        assertEquals("https://x.example:8443", CloudAddress.normalize("https://x.example:8443"))
+        assertEquals("http://127.0.0.1:9", CloudAddress.normalize("http://127.0.0.1:9"))
+        for (bad in listOf(null, "", " ", "http://x.example", "https://x.example/path", "https://x.example?q=1", "https://u@x.example", "https://", "ftp://x.example", "not a url")) {
+            assertNull(bad, CloudAddress.normalize(bad))
+        }
+        assertEquals("tunnel.example.com", CloudAddress.host("https://tunnel.example.com"))
     }
 }

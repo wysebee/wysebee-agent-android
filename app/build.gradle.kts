@@ -11,12 +11,6 @@ val appVersionCode = 2
 
 fun prop(name: String): String = (project.findProperty(name) as String?)?.trim() ?: ""
 
-// The dev and local clouds' addresses are not in the repo: they are properties kept outside it
-// (~/.gradle/gradle.properties, or -P), https only. Unit tests need neither; packaging a dev or
-// local build refuses to go on without its own (below).
-val devCloud = prop("WYSEBEE_AGENT_ANDROID_DEV_CLOUD_URL").trimEnd('/')
-val localCloud = prop("WYSEBEE_AGENT_ANDROID_LOCAL_CLOUD_URL").trimEnd('/')
-
 android {
     namespace = "com.wysebee.agent.android"
     compileSdk = 36
@@ -28,6 +22,8 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
+        // The server a phone pairs with unless the person chooses another.
+        buildConfigField("String", "DEFAULT_CLOUD_URL", "\"https://app.wysebee.com\"")
     }
 
     // The release key, never in the repo: its file and password are properties kept outside it
@@ -43,26 +39,15 @@ android {
     }
 
     buildTypes {
-        // Each build talks to one Wysebee Cloud, fixed when it is built, and can be pointed
-        // nowhere else. Each is an app of its own (its package, name, data and keys), so all
-        // three can be on one phone side by side.
+        // Every build pairs with Wysebee's own server unless the person chooses another in the
+        // app, or scans a QR code another one shows (2026-11-22). The two builds are apps of
+        // their own (package, name, data and keys), so both can be on one phone side by side.
         debug {
-            // "Wysebee Agent Dev": the dev cloud, whose address is kept outside the repo.
+            // "Wysebee Agent Dev": debuggable, signed with the debug key.
             applicationIdSuffix = ".dev"
-            buildConfigField("String", "CLOUD_URL", "\"${devCloud}\"")
-        }
-        create("local") {
-            // "Wysebee Agent Local": a wysebee-cloud on a developer's computer, through a
-            // tunnel whose address is kept outside the repo. Debuggable and signed with the
-            // debug key, as the debug build is.
-            initWith(getByName("debug"))
-            applicationIdSuffix = ".local"
-            matchingFallbacks += "debug"
-            buildConfigField("String", "CLOUD_URL", "\"${localCloud}\"")
         }
         release {
-            // "Wysebee Agent": production only.
-            buildConfigField("String", "CLOUD_URL", "\"https://app.wysebee.com\"")
+            // "Wysebee Agent", for people to download.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -82,19 +67,6 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
-    }
-}
-
-// A dev or local APK is made only with its cloud's address, and an https one.
-mapOf("packageDebug" to ("WYSEBEE_AGENT_ANDROID_DEV_CLOUD_URL" to devCloud),
-      "packageLocal" to ("WYSEBEE_AGENT_ANDROID_LOCAL_CLOUD_URL" to localCloud)).forEach { (task, cloud) ->
-    tasks.matching { it.name == task }.configureEach {
-        doFirst {
-            val (name, url) = cloud
-            if (!Regex("^https://[^/?#\\s\"]+$").matches(url)) {
-                throw GradleException("$name must be the cloud's https address, set in ~/.gradle/gradle.properties (README, Build).")
-            }
-        }
     }
 }
 

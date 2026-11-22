@@ -58,7 +58,9 @@ import com.wysebee.agent.android.AgentApp
 import com.wysebee.agent.android.R
 import com.wysebee.agent.android.core.Agent
 import com.wysebee.agent.android.core.App
+import com.wysebee.agent.android.core.CloudAddress
 import com.wysebee.agent.android.core.Reconnect
+import com.wysebee.agent.android.core.Scanned
 import com.wysebee.agent.android.core.Sensitive
 import com.wysebee.agent.android.device.AgentAccessibilityService
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +107,7 @@ private fun Screen(app: AgentApp, openAccessibility: () -> Unit) {
         Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // This build's own name ("Wysebee Agent Dev", "… Local"): it is also the name to find in
+        // This build's own name ("Wysebee Agent", "… Dev"): it is also the name to find in
         // Settings › Accessibility.
         val name = stringResource(R.string.app_name)
         Text(name, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
@@ -137,12 +139,16 @@ private fun Screen(app: AgentApp, openAccessibility: () -> Unit) {
                 Text("For a new agent named \"${s.pending.name}\". The code works for 10 minutes.", color = Color.LightGray, fontSize = 13.sp)
                 OutlinedButton(onClick = agent::cancelPairing) { Text("Cancel") }
             }
-            else -> Unpaired(agent, status.busy, status.reconnect)
+            status.scanned != null -> Scanned(agent, status.scanned!!, status.busy, status.reconnect)
+            else -> {
+                Unpaired(agent, status.busy)
+                Server(agent)
+            }
         }
 
         if (s.link != null) Apps(app, agent)
 
-        Text("Wysebee Cloud: ${agent.cloudUrl()}", color = Color.Gray, fontSize = 12.sp)
+        if (s.link != null || s.pending != null) Text("Wysebee Cloud: ${s.cloudUrl(agent.defaultCloud)}", color = Color.Gray, fontSize = 12.sp)
     }
 }
 
@@ -157,35 +163,94 @@ private fun Section(title: String, content: @Composable () -> Unit) {
     }
 }
 
+/** Not paired: scan Wysebee's QR code (no name needed yet), or type a name and pair with a code. */
 @Composable
-private fun Unpaired(agent: Agent, busy: Boolean, reconnect: Reconnect?) {
+private fun Unpaired(agent: Agent, busy: Boolean) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     Section("Pair with Wysebee") {
-        Text("Type a name for a new agent. Then scan the QR code Wysebee shows (Your devices › Pair a device › Android phone), or tap Pair and type the code this phone shows in Wysebee.", fontSize = 14.sp)
+        Text("In Wysebee, open Your devices › Pair a device › Android phone, and scan the QR code it shows.", fontSize = 14.sp)
+        Button(enabled = !busy, onClick = {
+            scope.launch {
+                when (val scanned = scanQr(context)) {
+                    is Scan.Read -> agent.scan(scanned.text)
+                    is Scan.Failed -> agent.say(scanned.why)
+                    Scan.Cancelled -> {}
+                }
+            }
+        }) { Text("Scan QR code") }
+        Text("Or pair with a code: type a name for a new agent, tap Pair with a code, and type the code this phone shows in Wysebee.", color = Color.LightGray, fontSize = 13.sp)
+        OutlinedTextField(name, { name = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Agent name") })
+        OutlinedButton(enabled = !busy && name.isNotBlank(), onClick = { scope.launch { agent.startPairing(name) } }) {
+            Text(if (busy) "Pairing…" else "Pair with a code")
+        }
+    }
+}
+
+/** A QR code scanned: the server it pairs with, said plainly, and the agent's name to type. */
+@Composable
+private fun Scanned(agent: Agent, scanned: Scanned, busy: Boolean, reconnect: Reconnect?) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    Section("Pair with ${CloudAddress.host(scanned.cloud)}") {
+        Text("Server: ${scanned.cloud}", fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+        if (scanned.cloud != agent.defaultCloud) {
+            Text(
+                "This is not Wysebee's own server. Pair only with a server you trust: its agent will see and operate the apps you allow here.",
+                color = Color(0xFFE0A050), fontSize = 13.sp,
+            )
+        }
+        Text("Type a name for the agent that will use this phone.", fontSize = 14.sp)
         OutlinedTextField(name, { name = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Agent name") })
         if (reconnect != null) {
-            // The scan's name is taken by an agent of this kind with no phone now.
+            // The name is taken by an agent of this kind with no phone now.
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(enabled = !busy, onClick = { scope.launch { agent.reconnect() } }) { Text("Reconnect to ${reconnect.agentLabel}") }
                 OutlinedButton(enabled = !busy, onClick = agent::declineReconnect) { Text("Use another name") }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(enabled = !busy && name.isNotBlank(), onClick = {
-                scope.launch {
-                    when (val scanned = scanQr(context)) {
-                        is Scan.Read -> agent.pairWithQr(name, scanned.text)
-                        is Scan.Failed -> agent.say(scanned.why)
-                        Scan.Cancelled -> {}
-                    }
-                }
-            }) { Text(if (busy) "Pairing…" else "Scan QR code") }
-            OutlinedButton(enabled = !busy && name.isNotBlank(), onClick = { scope.launch { agent.startPairing(name) } }) {
-                Text("Pair with a code")
+            Button(enabled = !busy && name.isNotBlank(), onClick = { scope.launch { agent.pairScanned(name) } }) {
+                Text(if (busy) "Pairing…" else "Pair")
             }
+            OutlinedButton(enabled = !busy, onClick = agent::cancelScan) { Text("Cancel") }
         }
+    }
+}
+
+/** The server this phone pairs with: Wysebee's own unless the person types another. */
+@Composable
+private fun Server(agent: Agent) {
+    val s by agent.status.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf(false) }
+    // From the state collected here, so the line follows every change.
+    val url = s.state.cloudUrl(agent.defaultCloud)
+    Section("Server") {
+        Text(url, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+        if (s.state.server != null) Text("Not Wysebee's own server (${agent.defaultCloud}).", color = Color(0xFFE0A050), fontSize = 13.sp)
+        Text("Scanning a QR code pairs with the server that shows it.", color = Color.LightGray, fontSize = 13.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = { editing = true }) { Text("Change server") }
+            if (s.state.server != null) TextButton(onClick = agent::resetServer) { Text("Use Wysebee's") }
+        }
+    }
+    if (editing) {
+        var typed by remember { mutableStateOf(url) }
+        var error by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Server") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("The Wysebee Cloud this phone pairs with, an https address.", fontSize = 14.sp)
+                    OutlinedTextField(typed, { typed = it.trim(); error = null }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Address") }, isError = error != null)
+                    error?.let { Text(it, color = Color(0xFFE0A050), fontSize = 13.sp) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { error = agent.setServer(typed); if (error == null) editing = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -208,7 +273,7 @@ private suspend fun scanQr(context: Context): Scan = suspendCancellableCoroutine
                     MlKitException.CODE_SCANNER_CANCELLED -> Scan.Cancelled
                     // Play services fetches the scanner on first use (asked for when the app opened).
                     MlKitException.UNAVAILABLE, MlKitException.CODE_SCANNER_UNAVAILABLE ->
-                        Scan.Failed("Google Play services is still downloading its QR code scanner. Try again in a minute, or tap Pair with a code.")
+                        Scan.Failed("Google Play services is still downloading its QR code scanner. Try again in a minute, or pair with a code.")
                     MlKitException.CODE_SCANNER_GOOGLE_PLAY_SERVICES_VERSION_TOO_OLD ->
                         Scan.Failed("Google Play services is too old for the QR code scanner: update it from the Play Store, or tap Pair with a code.")
                     else -> Scan.Failed("The QR code scanner could not open (${it.message ?: "Google Play services"}). Tap Pair with a code instead.")

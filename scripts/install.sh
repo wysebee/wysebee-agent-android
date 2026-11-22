@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Install a dev or local build of Wysebee Agent for Android (built by scripts/build.sh) on the
+# Install a dev build of Wysebee Agent for Android (built by scripts/build.sh) on the
 # phone or emulator adb sees, then open it. It does not build: build first.
 #
-# Usage: scripts/install.sh [dev|local]   (default: dev)
+# Usage: scripts/install.sh [dev]   (default: dev)
 # More than one device attached: name one with ANDROID_SERIAL=<serial> (see `adb devices`).
 set -euo pipefail
 
@@ -10,9 +10,8 @@ cd "$(dirname "$0")/.."
 env="${1:-dev}"
 case "$env" in
   dev)   apk=app/build/outputs/apk/debug/app-debug.apk; pkg=com.wysebee.agent.android.dev ;;
-  local) apk=app/build/outputs/apk/local/app-local.apk; pkg=com.wysebee.agent.android.local ;;
   -h|--help) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  *) echo "Unknown version '$env': use dev or local (a prod build is installed from Google Play)." >&2; exit 2 ;;
+  *) echo "Unknown version '$env': use dev (a prod build is downloaded from the Wysebee website)." >&2; exit 2 ;;
 esac
 
 # adb from the PATH, else from the SDK local.properties names.

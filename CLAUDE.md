@@ -23,12 +23,13 @@ sibling of `wysebee-agent-osx` (read its CLAUDE.md: the same rules apply where t
 - **Tests inject everything**: the phone (`Device`, `UiNode`: `FakeDevice`, `FakeNode`), the
   secret store (`MemorySecrets`), the cloud (`FakeCloud`, MockWebServer on 127.0.0.1), the
   state file (a temporary folder). No test reaches the internet or a real phone.
-- **Each build talks to one Wysebee Cloud, fixed when it is built** (`CLOUD_URL`, in
-  `app/build.gradle.kts`): release `https://app.wysebee.com`; debug "Wysebee Agent Dev" and
-  local "Wysebee Agent Local" from `WYSEBEE_AGENT_ANDROID_DEV_CLOUD_URL` and `_LOCAL_CLOUD_URL`
-  in `~/.gradle/gradle.properties`. **Never write the dev or local address into the repo** (it
-  is public). Nothing in the app changes it (the owner's call, 2026-11-17), and every build is
-  https only.
+- **The server** (2026-11-22, the owner's call, replacing a server fixed per build): every
+  build starts on `https://app.wysebee.com` (`DEFAULT_CLOUD_URL`); the person may type another
+  under Server before pairing (`Agent.setServer`, `State.server`), and a scanned QR code pairs
+  with the cloud it names (`Agent.scan`, then `pairScanned` with the name), shown first, with a
+  warning when it is not Wysebee's own. https only (`CloudAddress`). A link and a pending pairing
+  keep their own server. **Never write a dev, staging or tunnel address into the repo** (it is
+  public).
 - **Do not bump the version unless asked.** It lives in `app/build.gradle.kts` only.
 
 ## Layout
@@ -40,12 +41,14 @@ app/src/main/java/com/wysebee/agent/android/
     State.kt     State (the file: link, pending, paused, allowed apps), StateStore (atomic writes)
     LinkClient.kt the protocol's HTTP calls: start (with a QR code's offer, or not), poll,
                  result, unpair
-    PairingQr.kt the pairing QR code Wysebee shows: its offer, and where it was shown
+    PairingQr.kt the pairing QR code Wysebee shows: its offer, and the cloud that showed it
+    CloudAddress.kt a server's address: https://host[:port], https only
     Device.kt    Device and UiNode: the phone as the ops see it
     Snapshot.kt  the screen as text with refs
     Sensitive.kt the apps never screenshotted: banking, payment, investing, password
     Ops.kt       every op: the gates (paused, service, allowed app, own app, password), then the act
-    Agent.kt     pairing, the poll loop, calls beside it, pause, allow, unpair
+    Agent.kt     the server, pairing (scan first, name after; or a code), the poll loop, calls
+                 beside it, pause, allow, unpair
   device/        the Android side
     AgentAccessibilityService.kt  Device over AccessibilityService (gestures, global actions,
                  takeScreenshot, windows); AndroidNode.kt  UiNode over AccessibilityNodeInfo;
@@ -53,7 +56,7 @@ app/src/main/java/com/wysebee/agent/android/
   AgentApp.kt    holds the Agent and runs its loop while the process lives
   ui/MainActivity.kt  the window (Compose): service state, pairing, pause, apps (a picker with a
                  checkbox each), the cloud it uses
-scripts/         build.sh [dev|local|prod], install.sh [dev|local] (installs a build already made)
+scripts/         build.sh [dev|prod], install.sh [dev] (installs a build already made)
 app/src/test/    FakeDevice / FakeNode (Fakes.kt), FakeCloud (AgentTest.kt), Ops, Snapshot, State tests
 ```
 

@@ -28,10 +28,15 @@ data class Status(
     val busy: Boolean = false,
     /** A scanned QR code refused for a name taken by an agent this phone may be reconnected to. */
     val reconnect: Reconnect? = null,
+    /** A QR code scanned, waiting for the agent's name (2026-11-22: scan first, name after). */
+    val scanned: Scanned? = null,
 )
 
+/** A pairing QR code scanned, and the server it pairs with: the one that showed it. */
+data class Scanned(val qr: PairingQr, val cloud: String)
+
 /** The agent a scan may reconnect this phone to: one of its type with no phone now. */
-data class Reconnect(val typed: String, val qr: PairingQr, val agentName: String, val agentLabel: String)
+data class Reconnect(val typed: String, val qr: PairingQr, val agentName: String, val agentLabel: String, val cloud: String)
 
 /**
  * The agent: pairs with Wysebee Cloud, keeps one long poll going, and answers each call with
@@ -44,8 +49,8 @@ class Agent(
     private val link: LinkClient,
     device: () -> Device?,
     private val own: String,
-    /** The one Wysebee Cloud this build talks to (BuildConfig.CLOUD_URL). */
-    private val cloud: String,
+    /** The server a phone pairs with unless the person chose another (BuildConfig.DEFAULT_CLOUD_URL). */
+    val defaultCloud: String,
     private val deviceName: String,
     private val version: String,
     private val scope: CoroutineScope,
@@ -61,35 +66,64 @@ class Agent(
 
     val state: State get() = _status.value.state
 
-    fun cloudUrl(): String = state.link?.cloudUrl ?: state.pending?.cloudUrl ?: cloud
+    /** The server this phone is paired with, is pairing with, or would pair with. */
+    fun cloudUrl(): String = state.cloudUrl(defaultCloud)
 
     /** Starts the loop; it runs until [scope] ends. */
     fun start(): Job = scope.launch { loop() }
 
     // ---- what the person does in the window ----
 
-    /** Pairs by a QR code Wysebee shows (its text, as scanned): paired at once, no code to type.
-     *  Returns an English error, or null when paired. */
-    suspend fun pairWithQr(typed: String, scanned: String?): String? {
-        val qr = PairingQr.parse(scanned) ?: return note("That is not a Wysebee pairing QR code. In Wysebee, open Your devices › Pair a device › Android phone, and scan the code it shows.")
-        return startPairing(typed, qr)
+    /** The server to pair with, typed by the person: an https address. Returns an English error,
+     *  or null when kept. Only while this phone is neither paired nor pairing. */
+    fun setServer(typed: String): String? {
+        if (state.link != null || state.pending != null) return note("Unpair this phone before changing its server.")
+        val url = CloudAddress.normalize(typed) ?: return "Type the server's https address, such as $defaultCloud."
+        edit { it.copy(server = url.takeIf { u -> u != defaultCloud }) }
+        _status.update { it.copy(scanned = null, reconnect = null, message = null) }
+        return null
     }
+
+    /** Back to this build's own server. */
+    fun resetServer() {
+        if (state.link == null && state.pending == null) edit { it.copy(server = null) }
+    }
+
+    /** Reads a scanned QR code (its text): the server it names (or, naming none, this phone's)
+     *  waits with it for the agent's name — see [pairScanned]. Returns an English error, or null. */
+    fun scan(text: String?): String? {
+        if (state.link != null || state.pending != null) return note("This phone is already pairing or paired.")
+        val qr = PairingQr.parse(text) ?: return note("That is not a Wysebee pairing QR code. In Wysebee, open Your devices › Pair a device › Android phone, and scan the code it shows.")
+        val cloud = if (qr.from == null) cloudUrl() else CloudAddress.normalize(qr.from)
+            ?: return note("This QR code names a server Wysebee Agent cannot pair with (${qr.from}): only https addresses.")
+        _status.update { it.copy(scanned = Scanned(qr, cloud), reconnect = null, message = null) }
+        return null
+    }
+
+    /** Pairs by the QR code scanned, with the server it names, under the name typed now: paired
+     *  at once, no code to type. Returns an English error, or null when paired. */
+    suspend fun pairScanned(typed: String): String? {
+        val s = _status.value.scanned ?: return note("Scan Wysebee's QR code first.")
+        return startPairing(typed, s.qr, cloud = s.cloud)
+    }
+
+    /** Forgets the QR code scanned. */
+    fun cancelScan() = _status.update { it.copy(scanned = null, reconnect = null, message = null) }
 
     /** Reconnects this phone to the agent a scan's taken name named, with the same QR code. */
     suspend fun reconnect(): String? {
         val r = _status.value.reconnect ?: return note("There is no agent to reconnect to: scan the QR code again.")
-        return startPairing(r.typed, r.qr, reconnect = true)
+        return startPairing(r.typed, r.qr, reconnect = true, cloud = r.cloud)
     }
 
     /** Forgets the offer to reconnect: the person will type another name. */
     fun declineReconnect() = _status.update { it.copy(reconnect = null, message = null) }
 
     /** Returns an English error, or null when the code is showing (or, with [qr], paired). */
-    suspend fun startPairing(typed: String, qr: PairingQr? = null, reconnect: Boolean = false): String? {
+    suspend fun startPairing(typed: String, qr: PairingQr? = null, reconnect: Boolean = false, cloud: String = cloudUrl()): String? {
         val name = typed.trim()
         if (name.isEmpty() || name.length > 60 || name.any { it == '\n' || it == '\r' }) return note("Type a name for the agent: one line, at most 60 characters.")
         if (state.link != null || state.pending != null) return note("This phone is already pairing or paired.")
-        val cloud = cloudUrl()
         val secret = Secrets.newSecret()
         _status.update { it.copy(busy = true, message = null, reconnect = null) }
         try {
@@ -108,29 +142,24 @@ class Agent(
                     // Taken by an agent of this kind with no phone now: this phone may be it again.
                     val handle = taken.optString("name")
                     val label = taken.optString("label").ifEmpty { handle }
-                    _status.update { it.copy(reconnect = Reconnect(name, qr, handle, label)) }
-                    return note("$label (@$handle) already has that name, and has no phone now. Reconnect this phone to it, keeping its settings — or type another name for a new agent and scan again.")
+                    _status.update { it.copy(reconnect = Reconnect(name, qr, handle, label, cloud)) }
+                    return note("$label (@$handle) already has that name, and has no phone now. Reconnect this phone to it, keeping its settings — or type another name for a new agent.")
                 }
-                return note(when {
-                    e.code == "invalid_kind" -> "This Wysebee Cloud does not pair Android agents yet."
-                    // A QR code shown by another Wysebee: its offer was never sent anywhere but here.
-                    e.code == "offer_unknown" && qr?.from != null && PairingQr.host(qr.from) != PairingQr.host(cloud) ->
-                        "This QR code was shown by ${PairingQr.host(qr.from) ?: qr.from}, but this app pairs with ${PairingQr.host(cloud) ?: cloud}. Show the QR code in that Wysebee."
-                    else -> e.message
-                })
+                return note(if (e.code == "invalid_kind") "This Wysebee Cloud does not pair Android agents yet." else e.message)
             } catch (e: IOException) {
                 secrets.clear()
-                return note("Wysebee Cloud could not be reached: ${e.message ?: "no connection"}.")
+                return note("Wysebee Cloud (${CloudAddress.host(cloud)}) could not be reached: ${e.message ?: "no connection"}.")
             }
             try {
                 val agent = started.agent
                 if (agent != null) {
-                    // Paired at once by the QR code's offer.
-                    edit { it.copy(link = Link(started.id, cloud, agent.first, agent.second), paused = false) }
-                    _status.update { it.copy(message = null) }
+                    // Paired at once by the QR code's offer. Its server is this phone's from now on.
+                    edit { it.copy(link = Link(started.id, cloud, agent.first, agent.second), paused = false, server = cloud.takeIf { c -> c != defaultCloud }) }
+                    _status.update { it.copy(message = null, scanned = null) }
                     return null
                 }
                 edit { it.copy(pending = Pending(started.id, started.code, now() + started.expiresIn * 1000L, name, cloud)) }
+                _status.update { it.copy(scanned = null) }
             } catch (e: Exception) {
                 secrets.clear()
                 return note(KEEP_FAILED.format(e.message ?: e.javaClass.simpleName))
@@ -282,6 +311,7 @@ class Agent(
 
     private fun forget(message: String?) {
         secrets.clear()
+        // The server stays: a new pairing goes to the same one unless the person changes it.
         edit { it.copy(link = null, pending = null, paused = false, allowed = emptyList(), systemUi = false) }
         _status.update { it.copy(connected = false, message = message) }
     }

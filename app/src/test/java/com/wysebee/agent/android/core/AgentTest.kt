@@ -176,50 +176,79 @@ class AgentTest {
 
     @Test fun anUnreachableCloudIsSaidSoAndForgetsTheSecret() = runBlocking {
         val said = make(at = "http://127.0.0.1:1").startPairing("Phone")!!
-        assertTrue(said, said.startsWith("Wysebee Cloud could not be reached"))
+        assertTrue(said, said.startsWith("Wysebee Cloud (127.0.0.1) could not be reached"))
         assertNull(secrets.get())
     }
 
-    @Test fun aScannedQrCodePairsAtOnce() = runBlocking {
-        assertNull(agent.pairWithQr(" Phone ", "wysebee-agent:pair?offer=${FakeCloud.OFFER}&from=https%3A%2F%2Fwherever.example"))
+    private fun qrFrom(cloudUrl: String?, offer: String = FakeCloud.OFFER) =
+        "wysebee-agent:pair?offer=$offer" + (cloudUrl?.let { "&from=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")
+
+    private suspend fun scanAndPair(a: Agent, name: String, text: String?): String? = a.scan(text) ?: a.pairScanned(name)
+
+    @Test fun aScanNeedsNoNameAndPairsWithTheCloudThatShowedIt() = runBlocking {
+        // This phone's own server is elsewhere (and unreachable): the QR code's cloud is used.
+        val other = make(at = "http://127.0.0.1:1").also { it.start() }
+        assertNull(other.scan(qrFrom(cloud.url + "/")))
+        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url + "/"), cloud.url), other.status.value.scanned)
+        // Nothing is sent until a name is typed.
+        assertTrue(cloud.starts.isEmpty())
+        assertNotNull(other.pairScanned(" "))
+        assertNull(other.pairScanned(" Phone "))
         assertEquals(FakeCloud.OFFER, cloud.starts.single().getString("offer"))
         assertEquals("Phone", cloud.starts.single().getString("name"))
-        // No code to type: paired, and polling as any pairing does.
-        assertNull(agent.state.pending)
-        assertEquals(Link("link1", cloud.url, "phone", "Phone"), agent.state.link)
-        until("connected") { agent.status.value.connected }
+        // No code to type: paired there, and that server is this phone's from now on.
+        assertNull(other.state.pending)
+        assertNull(other.status.value.scanned)
+        assertEquals(Link("link1", cloud.url, "phone", "Phone"), other.state.link)
+        assertEquals(cloud.url, other.state.server)
+        until("connected") { other.status.value.connected }
     }
 
-    @Test fun aQrCodeThatIsNotOneOrIsUnknownIsSaidSo() = runBlocking {
+    @Test fun aQrCodeNamingNoCloudPairsWithThePhonesOwn() = runBlocking {
+        assertNull(agent.scan(qrFrom(null)))
+        assertEquals(cloud.url, agent.status.value.scanned?.cloud)
+        assertNull(agent.pairScanned("Phone"))
+        assertEquals(Link("link1", cloud.url, "phone", "Phone"), agent.state.link)
+        // The default server is not written down as a choice.
+        assertNull(agent.state.server)
+    }
+
+    @Test fun aQrCodeThatIsNotOneOrNamesABadCloudOrIsUnknownIsSaidSo() = runBlocking {
+        assertEquals("Scan Wysebee's QR code first.", agent.pairScanned("Phone"))
         for (bad in listOf(null, "", "https://example.com", "wysebee-agent:pair?offer=short", "wysebee-agent:pair?from=x")) {
-            assertTrue(agent.pairWithQr("Phone", bad)!!.startsWith("That is not a Wysebee pairing QR code"))
+            assertTrue(agent.scan(bad)!!.startsWith("That is not a Wysebee pairing QR code"))
+            assertNull(agent.status.value.scanned)
+        }
+        // Only an https cloud.
+        for (bad in listOf("http://evil.example", "https://evil.example/path", "ftp://x.example")) {
+            val said = agent.scan(qrFrom(bad))!!
+            assertTrue(said, said.startsWith("This QR code names a server Wysebee Agent cannot pair with ($bad)"))
         }
         assertTrue(cloud.starts.isEmpty())
-        val other = "Q".repeat(43)
-        // Shown by another Wysebee: said by its host, and this app's.
-        val elsewhere = agent.pairWithQr("Phone", "wysebee-agent:pair?offer=$other&from=https%3A%2F%2Fapp.wysebee.com")!!
-        assertEquals("This QR code was shown by app.wysebee.com, but this app pairs with 127.0.0.1. Show the QR code in that Wysebee.", elsewhere.replace(Regex("pairs with [^ ]+\\."), "pairs with 127.0.0.1."))
-        // Shown by this one (or not said where): the cloud's own words.
-        assertEquals("That QR code is not one Wysebee is waiting for.", agent.pairWithQr("Phone", "wysebee-agent:pair?offer=$other&from=${cloud.url}"))
-        assertEquals("That QR code is not one Wysebee is waiting for.", agent.pairWithQr("Phone", "wysebee-agent:pair?offer=$other"))
+        // An offer the cloud does not know: its own words.
+        assertEquals("That QR code is not one Wysebee is waiting for.", scanAndPair(agent, "Phone", qrFrom(cloud.url, "Q".repeat(43))))
         assertNull(agent.state.link)
         assertNull(secrets.get())
-        // A name is still needed first.
-        assertNotNull(agent.pairWithQr(" ", "wysebee-agent:pair?offer=${FakeCloud.OFFER}"))
+        // A scan can be put aside.
+        assertNull(agent.scan(qrFrom(cloud.url)))
+        agent.cancelScan()
+        assertNull(agent.status.value.scanned)
     }
 
     @Test fun aScanWhoseNameIsTakenMayReconnect() = runBlocking {
-        val qr = "wysebee-agent:pair?offer=${FakeCloud.OFFER}"
+        val qr = qrFrom(cloud.url)
         // Taken by an agent that still has its phone: said, with nothing to reconnect.
         cloud.taken["Busy"] = false
-        assertEquals("There is already an agent with that name.", agent.pairWithQr("Busy", qr))
+        assertEquals("There is already an agent with that name.", scanAndPair(agent, "Busy", qr))
         assertNull(agent.status.value.reconnect)
         assertNotNull(agent.reconnect())
+        // The scan waits for another name: no second scan needed.
+        assertNotNull(agent.status.value.scanned)
         // Taken by one with no phone: offered, and done with the same QR code.
         cloud.taken["Jeff Android"] = true
-        val said = agent.pairWithQr("Jeff Android", qr)!!
+        val said = agent.pairScanned("Jeff Android")!!
         assertTrue(said, said.startsWith("Jeff Android (@jeff-android) already has that name, and has no phone now."))
-        assertEquals(Reconnect("Jeff Android", PairingQr(FakeCloud.OFFER, null), "jeff-android", "Jeff Android"), agent.status.value.reconnect)
+        assertEquals(Reconnect("Jeff Android", PairingQr(FakeCloud.OFFER, cloud.url), "jeff-android", "Jeff Android", cloud.url), agent.status.value.reconnect)
         assertNull(agent.state.link)
         assertNull(agent.reconnect())
         assertTrue(cloud.starts.last().getBoolean("reconnect"))
@@ -229,16 +258,48 @@ class AgentTest {
 
     @Test fun anOfferToReconnectCanBeDeclined() = runBlocking {
         cloud.taken["Jeff Android"] = true
-        agent.pairWithQr("Jeff Android", "wysebee-agent:pair?offer=${FakeCloud.OFFER}")
+        scanAndPair(agent, "Jeff Android", qrFrom(null))
         assertNotNull(agent.status.value.reconnect)
         agent.declineReconnect()
         assertNull(agent.status.value.reconnect)
         assertNull(agent.status.value.message)
-        agent.pairWithQr("Jeff Android", "wysebee-agent:pair?offer=${FakeCloud.OFFER}")
+        agent.pairScanned("Jeff Android")
         agent.dismissMessage()
         assertNull(agent.status.value.reconnect)
         // A code pairing never offers it.
         assertFalse(cloud.starts.any { it.has("reconnect") })
+    }
+
+    @Test fun thePersonMayChooseTheServer() = runBlocking {
+        val store = StateStore(File(tmp.root, "chosen.json"))
+        val other = make(store = store, at = "https://app.wysebee.example")
+        assertEquals("https://app.wysebee.example", other.cloudUrl())
+        assertNull(other.setServer("  Wysebee.Example.org/ "))
+        assertEquals("https://wysebee.example.org", other.cloudUrl())
+        assertEquals("https://wysebee.example.org", store.load().server)
+        for (bad in listOf("", "http://wysebee.example.org", "https://wysebee.example.org/app", "https://a b", "https://user@x.example")) {
+            assertEquals("Type the server's https address, such as https://app.wysebee.example.", other.setServer(bad))
+        }
+        assertEquals("https://wysebee.example.org", other.cloudUrl())
+        other.resetServer()
+        assertNull(other.state.server)
+        // This build's own server is not kept as a choice.
+        assertNull(other.setServer("https://app.wysebee.example"))
+        assertNull(other.state.server)
+    }
+
+    @Test fun aCodePairingGoesToTheChosenServerAndItStaysWhilePaired() = runBlocking {
+        val other = make(at = "http://127.0.0.1:1").also { it.start() }
+        assertNull(other.setServer(cloud.url))
+        assertNull(other.startPairing("Phone"))
+        assertEquals(cloud.url, other.state.pending?.cloudUrl)
+        assertEquals("Unpair this phone before changing its server.", other.setServer("https://elsewhere.example"))
+        cloud.claimed = true
+        until("paired") { other.state.link != null }
+        assertEquals(cloud.url, other.cloudUrl())
+        other.unpair()
+        // Unpaired, the next pairing goes to the same server.
+        assertEquals(cloud.url, other.cloudUrl())
     }
 
     @Test fun theWindowMaySaySomething() {

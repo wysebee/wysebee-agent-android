@@ -14,11 +14,13 @@ Android agent type answers pairing with "This Wysebee Cloud does not pair Androi
 
 1. Install the app and open it. Tap **Open accessibility settings** and turn on **Wysebee
    Agent** (Android asks you to confirm: it is what lets the app see and touch the screen).
-2. Type a name for a new agent. In Wysebee, open **Your devices › Pair a device › Android
-   phone**: it shows a QR code. Tap **Scan QR code** on the phone and point it at the screen.
-   That agent — and only it — now operates this phone.
-3. Or tap **Pair with a code** instead: the phone shows a code (`XXXX-XXXX`) to type in that
-   dialog.
+2. In Wysebee, open **Your devices › Pair a device › Android phone**: it shows a QR code and
+   the server it comes from. Tap **Scan QR code** on the phone and point it at the screen. The
+   phone shows that server; type a name for a new agent and tap **Pair**. That agent — and only
+   it — now operates this phone.
+3. Or type a name and tap **Pair with a code** instead: the phone shows a code (`XXXX-XXXX`)
+   to type in that dialog. It pairs with the server shown under **Server**
+   (`https://app.wysebee.com` unless you change it).
 4. Under **Apps the agent may operate**, tap **Add apps…**, tick the apps it may open, read and
    touch, and tap **Add**. There is no "every app": each is chosen.
 5. Ask the agent to do something on the phone. **Let Wysebee operate this phone** pauses it;
@@ -41,8 +43,10 @@ Android agent type answers pairing with "This Wysebee Cloud does not pair Androi
 - **The link's secret** (32 random bytes) is made on the phone and sealed with an Android
   Keystore key; the cloud keeps its SHA-256. It is sent only to the cloud the pairing was made
   with (no redirects followed).
-- **The cloud's address is fixed when the app is built**, https only, and cannot be changed in
-  the app: the production build talks to `https://app.wysebee.com` only (below, for the others).
+- **The server**, https only, is `https://app.wysebee.com` unless the person types another
+  under **Server** before pairing, or scans a QR code another Wysebee Cloud shows: the phone
+  pairs with the server the QR code names, after showing it (and saying so when it is not
+  Wysebee's own). A pairing keeps its server until it is unpaired.
 - **What Wysebee Cloud sees**: each call's arguments and answer (screen text and screenshots of
   the allowed apps), kept until read, an hour at most.
 
@@ -51,32 +55,23 @@ Android agent type answers pairing with "This Wysebee Cloud does not pair Androi
 JDK 17 and the Android SDK (`local.properties`' `sdk.dir`). Kotlin, Jetpack Compose, one
 module, Android 11+ (API 30: the accessibility screenshot and Enter action need it).
 
-Three versions, each its own app (package, name, data, keys), so all can be on one phone side
-by side. Each talks to one Wysebee Cloud, fixed when it is built:
+Two versions, each its own app (package, name, data, keys), so both can be on one phone side
+by side. Both start on `https://app.wysebee.com`; to try another Wysebee Cloud, scan the QR code
+it shows, or type its address under **Server**:
 
-| Version | App name | Package | Wysebee Cloud |
-|---|---|---|---|
-| `dev` (debug) | Wysebee Agent Dev | `com.wysebee.agent.android.dev` | the dev server: `WYSEBEE_AGENT_ANDROID_DEV_CLOUD_URL` |
-| `local` | Wysebee Agent Local | `com.wysebee.agent.android.local` | a local wysebee-cloud through a tunnel: `WYSEBEE_AGENT_ANDROID_LOCAL_CLOUD_URL` |
-| `prod` (release) | Wysebee Agent | `com.wysebee.agent.android` | `https://app.wysebee.com` |
-
-The dev and local addresses are not in the repo. Put them in `~/.gradle/gradle.properties`
-(https only); a dev or local build refuses to package without its own, and the unit tests need
-neither:
-
-```properties
-WYSEBEE_AGENT_ANDROID_DEV_CLOUD_URL=https://dev.example.com
-WYSEBEE_AGENT_ANDROID_LOCAL_CLOUD_URL=https://your-tunnel.example.com
-```
+| Version | App name | Package |
+|---|---|---|
+| `dev` (debug) | Wysebee Agent Dev | `com.wysebee.agent.android.dev` |
+| `prod` (release) | Wysebee Agent | `com.wysebee.agent.android` |
 
 ```bash
-scripts/build.sh dev             # or local, or prod (a prod build comes out unsigned)
-scripts/install.sh dev           # or local: installs the build already made, and opens it
+scripts/build.sh dev             # or prod (without the release key, a prod build comes out unsigned)
+scripts/install.sh dev           # installs the build already made, and opens it
 ./gradlew testDebugUnitTest      # the core against a fake phone and a fake cloud on 127.0.0.1
 ```
 
 `install.sh` does not build. With a phone and an emulator both attached, name one:
-`ANDROID_SERIAL=emulator-5554 scripts/install.sh local` (`adb devices` lists them).
+`ANDROID_SERIAL=emulator-5554 scripts/install.sh dev` (`adb devices` lists them).
 
 ### Trying it on the emulator
 
@@ -87,8 +82,8 @@ adb shell settings put secure enabled_accessibility_services \
   com.wysebee.agent.android.dev/com.wysebee.agent.android.device.AgentAccessibilityService
 ```
 
-(The last line turns the service on without the Settings screens; use `.local` for the local
-version. On a real phone, use the app's button.)
+(The last line turns the service on without the Settings screens. On a real phone, use the
+app's button.)
 
 Avoid `uiautomator dump` while it runs: UiAutomator turns other accessibility services off while
 it works, so the app reads as off until the system binds it again.

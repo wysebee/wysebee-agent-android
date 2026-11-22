@@ -37,7 +37,7 @@ class AgentApp : Application() {
             link = LinkClient(LinkClient.client()),
             device = { AgentAccessibilityService.current },
             own = packageName,
-            cloud = BuildConfig.CLOUD_URL,
+            defaultCloud = BuildConfig.DEFAULT_CLOUD_URL,
             deviceName = deviceName(),
             version = BuildConfig.VERSION_NAME,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),

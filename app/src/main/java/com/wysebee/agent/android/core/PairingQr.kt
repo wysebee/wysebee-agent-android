@@ -1,13 +1,12 @@
 package com.wysebee.agent.android.core
 
-import java.net.URI
 import java.net.URLDecoder
 
 /**
  * A pairing QR code Wysebee shows (the link protocol, "Pairing by a QR code"):
- * `wysebee-agent:pair?offer=<token>&from=<where it was shown>`. The token goes only to this
- * build's own cloud; `from` is only for saying where a QR code came from when that cloud does not
- * know it.
+ * `wysebee-agent:pair?offer=<token>&from=<the cloud that showed it>`. The phone pairs with that
+ * cloud (2026-11-22, the owner's call), after showing the person which it is; one naming no
+ * cloud pairs with the phone's own server.
  */
 data class PairingQr(val offer: String, val from: String?) {
     companion object {
@@ -25,8 +24,5 @@ data class PairingQr(val offer: String, val from: String?) {
             val offer = fields["offer"]?.takeIf { TOKEN.matches(it) } ?: return null
             return PairingQr(offer, fields["from"]?.takeIf { it.isNotBlank() })
         }
-
-        /** The host of an address, for saying it; null when it has none. */
-        fun host(url: String?): String? = runCatching { URI(url!!).host?.lowercase() }.getOrNull()
     }
 }
