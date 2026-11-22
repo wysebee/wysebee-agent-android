@@ -27,7 +27,8 @@ sibling of `wysebee-agent-osx` (read its CLAUDE.md: the same rules apply where t
   build starts on `https://app.wysebee.com` (`DEFAULT_CLOUD_URL`); the person may type another
   under Server before pairing (`Agent.setServer`, `State.server`), and a scanned QR code pairs
   with the cloud it names (`Agent.scan`, then `pairScanned` with the name), shown first, with a
-  warning when it is not Wysebee's own. https only (`CloudAddress`). A link and a pending pairing
+  warning when it is not Wysebee's own, beside the account that showed it (`LinkClient.previewOffer`,
+  the cloud's `POST /offers/preview`: name and email, for the person to confirm it is theirs). https only (`CloudAddress`). A link and a pending pairing
   keep their own server. **Never write a dev, staging or tunnel address into the repo** (it is
   public).
 - **Do not bump the version unless asked.** It lives in `app/build.gradle.kts` only.

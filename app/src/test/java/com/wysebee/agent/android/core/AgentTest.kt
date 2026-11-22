@@ -44,12 +44,21 @@ class FakeCloud : Dispatcher() {
     @Volatile var unpaired = false
     /** Names taken, and whether the agent of each may be reconnected. */
     val taken = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    /** Whose offer it is; null: a cloud older than the preview, which does not know the call. */
+    @Volatile var owner: Account? = Account("Jeff", "jeff@example.com")
+    val previews = CopyOnWriteArrayList<JSONObject>()
 
     override fun dispatch(request: RecordedRequest): MockResponse {
         val path = request.path ?: ""
         val body = request.body.readUtf8().let { if (it.isBlank()) JSONObject() else JSONObject(it) }
         val auth = request.getHeader("Authorization")?.removePrefix("Bearer ")
         val p = LinkClient.PREFIX
+        if (path == "$p/offers/preview") {
+            previews += body
+            val who = owner ?: return json(404, JSONObject().put("detail", "Not Found"))
+            if (body.optString("offer") != OFFER) return json(404, JSONObject().put("detail", "That QR code is not one Wysebee is waiting for.").put("code", "offer_unknown"))
+            return json(200, JSONObject().put("user", JSONObject().put("name", who.name).put("email", who.email)).put("expires_in", 500))
+        }
         if (path == "$p/start") {
             starts += body
             if (startStatus != 200) return json(startStatus, JSONObject().put("detail", "No such kind.").put("code", "invalid_kind"))
@@ -189,8 +198,10 @@ class AgentTest {
         // This phone's own server is elsewhere (and unreachable): the QR code's cloud is used.
         val other = make(at = "http://127.0.0.1:1").also { it.start() }
         assertNull(other.scan(qrFrom(cloud.url + "/")))
-        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url + "/"), cloud.url), other.status.value.scanned)
-        // Nothing is sent until a name is typed.
+        // Whose QR code it is, asked of the cloud that showed it, for the person to confirm.
+        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url + "/"), cloud.url, Account("Jeff", "jeff@example.com")), other.status.value.scanned)
+        assertEquals(FakeCloud.OFFER, cloud.previews.single().getString("offer"))
+        // Nothing is paired until a name is typed.
         assertTrue(cloud.starts.isEmpty())
         assertNotNull(other.pairScanned(" "))
         assertNull(other.pairScanned(" Phone "))
@@ -225,14 +236,28 @@ class AgentTest {
             assertTrue(said, said.startsWith("This QR code names a server Wysebee Agent cannot pair with ($bad)"))
         }
         assertTrue(cloud.starts.isEmpty())
-        // An offer the cloud does not know: its own words.
-        assertEquals("That QR code is not one Wysebee is waiting for.", scanAndPair(agent, "Phone", qrFrom(cloud.url, "Q".repeat(43))))
+        // An offer the cloud does not know: its own words, said at the scan.
+        assertEquals("That QR code is not one Wysebee is waiting for.", agent.scan(qrFrom(cloud.url, "Q".repeat(43))))
+        assertNull(agent.status.value.scanned)
+        assertTrue(cloud.starts.isEmpty())
+        // A cloud that cannot be reached: said, by its host.
+        assertTrue(agent.scan(qrFrom("http://127.0.0.1:1"))!!.startsWith("Wysebee Cloud (127.0.0.1) could not be reached"))
+        assertNull(agent.status.value.scanned)
         assertNull(agent.state.link)
         assertNull(secrets.get())
         // A scan can be put aside.
         assertNull(agent.scan(qrFrom(cloud.url)))
         agent.cancelScan()
         assertNull(agent.status.value.scanned)
+    }
+
+    @Test fun aCloudThatDoesNotSayWhoseQrCodeItIsStillPairs() = runBlocking {
+        // Older than the preview: the account is unknown, and the person is told so by the window.
+        cloud.owner = null
+        assertNull(agent.scan(qrFrom(cloud.url)))
+        assertEquals(Scanned(PairingQr(FakeCloud.OFFER, cloud.url), cloud.url, null), agent.status.value.scanned)
+        assertNull(agent.pairScanned("Phone"))
+        assertEquals(Link("link1", cloud.url, "phone", "Phone"), agent.state.link)
     }
 
     @Test fun aScanWhoseNameIsTakenMayReconnect() = runBlocking {

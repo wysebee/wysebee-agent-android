@@ -195,9 +195,26 @@ private fun Scanned(agent: Agent, scanned: Scanned, busy: Boolean, reconnect: Re
     var name by remember { mutableStateOf("") }
     Section("Pair with ${CloudAddress.host(scanned.cloud)}") {
         Text("Server: ${scanned.cloud}", fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+        // Whose QR code it is (2026-11-22), for the person to check it is their own account.
+        val account = scanned.account
+        Column(
+            Modifier.fillMaxWidth().background(Color(0xFF2A2338), RoundedCornerShape(8.dp)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("Wysebee account", color = Color.LightGray, fontSize = 12.sp)
+            when {
+                account == null -> Text("This server did not say whose QR code this is.", color = Color(0xFFE0A050), fontSize = 14.sp)
+                account.name.isEmpty() && account.email.isEmpty() -> Text("Wysebee does not know this account's name yet.", fontSize = 14.sp)
+                else -> {
+                    if (account.name.isNotEmpty()) Text(account.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    if (account.email.isNotEmpty()) Text(account.email, fontSize = 14.sp)
+                }
+            }
+        }
+        Text("Pair only if this is your account: its agent will see and operate the apps you allow here.", color = Color.LightGray, fontSize = 13.sp)
         if (scanned.cloud != agent.defaultCloud) {
             Text(
-                "This is not Wysebee's own server. Pair only with a server you trust: its agent will see and operate the apps you allow here.",
+                "This is not Wysebee's own server. Pair only with a server you trust.",
                 color = Color(0xFFE0A050), fontSize = 13.sp,
             )
         }

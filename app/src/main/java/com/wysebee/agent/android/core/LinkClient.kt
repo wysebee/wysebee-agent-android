@@ -20,7 +20,10 @@ data class Call(val id: String, val op: String, val args: JSONObject)
 /** A refusal from the cloud: its status, its `code` and its English `detail`. */
 class CloudRefusal(val status: Int, val code: String?, message: String, val body: JSONObject = JSONObject()) : IOException(message)
 
-/** The link protocol's HTTP calls: start, poll, result, unpair. */
+/** The Wysebee account a QR code was shown by: its name and email, either may be blank. */
+data class Account(val name: String, val email: String)
+
+/** The link protocol's HTTP calls: preview a QR code's offer, start, poll, result, unpair. */
 class LinkClient(private val http: OkHttpClient) {
     sealed interface Poll {
         data class Pending(val expiresIn: Int) : Poll
@@ -33,6 +36,20 @@ class LinkClient(private val http: OkHttpClient) {
     /** A pairing started: its code to show — or, started with a QR code's offer, the agent it
      *  was paired with at once (and no code). */
     data class Started(val id: String, val code: String, val expiresIn: Int, val agent: Pair<String, String>? = null)
+
+    /** Whose QR code [offer] is, before pairing with it (2026-11-22): looking takes nothing.
+     *  Null when the cloud is older than this call; refused `offer_unknown` when it is no offer. */
+    suspend fun previewOffer(cloud: String, offer: String): Account? {
+        val o = try {
+            send(post("$cloud$PREFIX/offers/preview", JSONObject().put("offer", offer), null))
+        } catch (e: CloudRefusal) {
+            // A cloud without the call answers 404 or 405 with no code of ours.
+            if (e.code == null && (e.status == 404 || e.status == 405)) return null
+            throw e
+        }
+        val user = o.optJSONObject("user") ?: return null
+        return Account(user.optString("name").trim(), user.optString("email").trim())
+    }
 
     suspend fun start(cloud: String, kind: String, name: String, secretHash: String, device: String, version: String, offer: String? = null, reconnect: Boolean = false): Started {
         val body = JSONObject().put("kind", kind).put("name", name).put("secret_hash", secretHash)

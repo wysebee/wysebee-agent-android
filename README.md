@@ -16,7 +16,8 @@ Android agent type answers pairing with "This Wysebee Cloud does not pair Androi
    Agent** (Android asks you to confirm: it is what lets the app see and touch the screen).
 2. In Wysebee, open **Your devices › Pair a device › Android phone**: it shows a QR code and
    the server it comes from. Tap **Scan QR code** on the phone and point it at the screen. The
-   phone shows that server; type a name for a new agent and tap **Pair**. That agent — and only
+   phone shows that server and the Wysebee account that showed the code (its name and email),
+   so you can check it is yours; type a name for a new agent and tap **Pair**. That agent — and only
    it — now operates this phone.
 3. Or type a name and tap **Pair with a code** instead: the phone shows a code (`XXXX-XXXX`)
    to type in that dialog. It pairs with the server shown under **Server**

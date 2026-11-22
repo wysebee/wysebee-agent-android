@@ -32,8 +32,9 @@ data class Status(
     val scanned: Scanned? = null,
 )
 
-/** A pairing QR code scanned, and the server it pairs with: the one that showed it. */
-data class Scanned(val qr: PairingQr, val cloud: String)
+/** A pairing QR code scanned, the server it pairs with (the one that showed it), and the
+ *  account that showed it — null when that server did not say. */
+data class Scanned(val qr: PairingQr, val cloud: String, val account: Account? = null)
 
 /** The agent a scan may reconnect this phone to: one of its type with no phone now. */
 data class Reconnect(val typed: String, val qr: PairingQr, val agentName: String, val agentLabel: String, val cloud: String)
@@ -90,14 +91,28 @@ class Agent(
     }
 
     /** Reads a scanned QR code (its text): the server it names (or, naming none, this phone's)
-     *  waits with it for the agent's name — see [pairScanned]. Returns an English error, or null. */
-    fun scan(text: String?): String? {
+     *  and the account that showed it, asked of that server (2026-11-22: the person confirms
+     *  it is theirs), wait with it for the agent's name — see [pairScanned]. Nothing is paired
+     *  yet. Returns an English error, or null. */
+    suspend fun scan(text: String?): String? {
         if (state.link != null || state.pending != null) return note("This phone is already pairing or paired.")
         val qr = PairingQr.parse(text) ?: return note("That is not a Wysebee pairing QR code. In Wysebee, open Your devices › Pair a device › Android phone, and scan the code it shows.")
         val cloud = if (qr.from == null) cloudUrl() else CloudAddress.normalize(qr.from)
             ?: return note("This QR code names a server Wysebee Agent cannot pair with (${qr.from}): only https addresses.")
-        _status.update { it.copy(scanned = Scanned(qr, cloud), reconnect = null, message = null) }
-        return null
+        _status.update { it.copy(busy = true, scanned = null, reconnect = null, message = null) }
+        try {
+            val account = try {
+                link.previewOffer(cloud, qr.offer)
+            } catch (e: CloudRefusal) {
+                return note(e.message)
+            } catch (e: IOException) {
+                return note("Wysebee Cloud (${CloudAddress.host(cloud)}) could not be reached: ${e.message ?: "no connection"}.")
+            }
+            _status.update { it.copy(scanned = Scanned(qr, cloud, account)) }
+            return null
+        } finally {
+            _status.update { it.copy(busy = false) }
+        }
     }
 
     /** Pairs by the QR code scanned, with the server it names, under the name typed now: paired
